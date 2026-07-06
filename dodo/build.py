@@ -5,17 +5,18 @@ import os
 from dodo.dodo_exceptions import dodoException
 from dodo.get_af2_structure import get_af2_pdb_lines
 from dodo.idr_constructor import build_structure, build_idr_from_sequence
-from dodo.find_idrs_fds_loops import get_fds_loops_idrs, get_fds_idrs_from_metapredict
+from dodo.find_idrs_fds_loops import get_fds_loops_idrs, get_fds_idrs_from_metapredict, get_fds_idrs_from_bfactor
 from dodo.dodo_tools import plot_structure
 from dodo.pdb_tools import PDBParser, write_pdb, array, save_pdb_from_PDBParserObj
 from dodo import parameters
 
 
 
-def pdb_from_name(protein_name, out_path='', mode='predicted', 
-    linear_placement=False, CONECT_lines=True, include_FD_atoms=True, 
-    use_metapredict=False, graph=False, verbose=True, attempts_per_region=40, 
-    attempts_per_coord=2000, num_models=1, beta_for_FD_IDR=False, just_fds=False):
+def pdb_from_name(protein_name, out_path='', mode='predicted',
+    linear_placement=False, CONECT_lines=True, include_FD_atoms=True,
+    use_metapredict=False, graph=False, verbose=True, attempts_per_region=40,
+    attempts_per_coord=2000, num_models=1, beta_for_FD_IDR=False, just_fds=False,
+    bfactor_threshold=None, bfactor_hysteresis=0.05):
     """
     Function to take in the name of a protein and then return an AF2 PDB
     with modified disordered regions. 
@@ -81,14 +82,18 @@ def pdb_from_name(protein_name, out_path='', mode='predicted',
     # make a dict with info we need for everything.
     PDBParserObj=get_af2_pdb_lines(protein_name, verbose=verbose)
     
-    # use metapredict or atom positions, update the regions info in PDBParserObj.
-    if use_metapredict:
+    # use bfactor proxy, metapredict, or atom positions to update regions info in PDBParserObj.
+    if bfactor_threshold is not None:
+        if verbose:
+            print(f'Classifying regions using B-factor (pLDDT) proxy with threshold={bfactor_threshold}, hysteresis={bfactor_hysteresis}.')
+        PDBParserObj = get_fds_idrs_from_bfactor(PDBParserObj, threshold=bfactor_threshold, hysteresis=bfactor_hysteresis)
+    elif use_metapredict:
         if verbose==True:
             print('Predicting regions using Metapredict V2.')
         PDBParserObj = get_fds_idrs_from_metapredict(PDBParserObj)
     else:
         if verbose==True:
-            print('Predicting folded reigons, loops, and IDRs using AF2 structure information.')        
+            print('Predicting folded reigons, loops, and IDRs using AF2 structure information.')
         PDBParserObj = get_fds_loops_idrs(PDBParserObj)
     
     # Print some info
@@ -167,11 +172,12 @@ def pdb_from_name(protein_name, out_path='', mode='predicted',
                     just_fds=just_fds)
 
 
-def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted', 
-    linear_placement=False, CONECT_lines=True, include_FD_atoms=True, 
-    use_metapredict=False, graph=False, verbose=True, attempts_per_region=40, 
-    attempts_per_coord=2000, regions_dict=None, num_models=1, 
-    beta_for_FD_IDR=False, just_fds=False):
+def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
+    linear_placement=False, CONECT_lines=True, include_FD_atoms=True,
+    use_metapredict=False, graph=False, verbose=True, attempts_per_region=40,
+    attempts_per_coord=2000, regions_dict=None, num_models=1,
+    beta_for_FD_IDR=False, just_fds=False,
+    bfactor_threshold=None, bfactor_hysteresis=0.05):
     """
     Function to take in the path to an AF2 pdb structure and return the structure
     with modified disordered regions. 
@@ -241,15 +247,19 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
     cur_pdb=open(path_to_pdb, 'r').read().split('\n')
     PDBParserObj = PDBParser(cur_pdb)
 
-    # use metapredict or atom positions if user didn't specify the regions...
+    # use metapredict, bfactor proxy, or atom positions if user didn't specify the regions...
     if regions_dict==None:
-        if use_metapredict:
+        if bfactor_threshold is not None:
+            if verbose:
+                print(f'Classifying regions using B-factor (pLDDT) proxy with threshold={bfactor_threshold}, hysteresis={bfactor_hysteresis}.')
+            PDBParserObj = get_fds_idrs_from_bfactor(PDBParserObj, threshold=bfactor_threshold, hysteresis=bfactor_hysteresis)
+        elif use_metapredict:
             if verbose==True:
                 print('Predicting regions using Metapredict V2.')
             PDBParserObj = get_fds_idrs_from_metapredict(PDBParserObj)
         else:
             if verbose==True:
-                print('Predicting folded reigons, loops, and IDRs using AF2 structure information.')        
+                print('Predicting folded reigons, loops, and IDRs using AF2 structure information.')
             PDBParserObj = get_fds_loops_idrs(PDBParserObj)
     else:
         PDBParserObj.regions_dict=regions_dict

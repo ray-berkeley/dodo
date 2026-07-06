@@ -331,3 +331,167 @@ def get_fds_idrs_from_metapredict(PDBParserObj):
     PDBParserObj.regions_dict=fin_dict
 
     return PDBParserObj
+
+
+def _merge_small_regions(all_ranges, min_region_size):
+    '''
+    Merge regions smaller than min_region_size into their neighbors.
+    Small IDRs get absorbed into adjacent FDs and vice versa.
+    Repeated until no small regions remain.
+
+    Parameters
+    ----------
+    all_ranges : list of ([start, end], is_fd) tuples
+        Sorted by start index.
+    min_region_size : int
+        Minimum number of residues for a region to survive.
+
+    Returns
+    -------
+    list of ([start, end], is_fd) tuples
+    '''
+    changed = True
+    while changed:
+        changed = False
+        for i, (coords, is_fd) in enumerate(all_ranges):
+            region_len = coords[1] - coords[0] + 1
+            if region_len >= min_region_size:
+                continue
+            # merge into whichever neighbor is the same type, or the larger one
+            prev_r = all_ranges[i - 1] if i > 0 else None
+            next_r = all_ranges[i + 1] if i < len(all_ranges) - 1 else None
+            # pick merge target: prefer neighbor of opposite type that's larger
+            # (absorb the small region into the bigger neighbor)
+            if prev_r and not next_r:
+                target = i - 1
+            elif next_r and not prev_r:
+                target = i + 1
+            elif prev_r and next_r:
+                prev_len = prev_r[0][1] - prev_r[0][0] + 1
+                next_len = next_r[0][1] - next_r[0][0] + 1
+                target = i - 1 if prev_len >= next_len else i + 1
+            else:
+                continue
+            # extend the target to cover this region
+            t_coords, t_is_fd = all_ranges[target]
+            new_start = min(t_coords[0], coords[0])
+            new_end = max(t_coords[1], coords[1])
+            all_ranges[target] = ([new_start, new_end], t_is_fd)
+            all_ranges.pop(i)
+            # now merge any adjacent regions of the same type that resulted
+            merged = []
+            for r_coords, r_is_fd in all_ranges:
+                if merged and merged[-1][1] == r_is_fd:
+                    prev_coords = merged[-1][0]
+                    merged[-1] = ([prev_coords[0], r_coords[1]], r_is_fd)
+                else:
+                    merged.append((r_coords, r_is_fd))
+            all_ranges = merged
+            changed = True
+            break
+    return all_ranges
+
+
+def get_fds_idrs_from_bfactor(PDBParserObj, threshold=0.75, hysteresis=0.05,
+    min_region_size=10):
+    '''
+    Classify regions as FDs or IDRs using B-factor values as a pLDDT proxy.
+    Designed for AlphaFold structures where pLDDT is stored in the B-factor column.
+
+    Uses a state machine with hysteresis to prevent short disordered dips
+    from fragmenting ordered regions.
+
+    Parameters
+    ----------
+    PDBParserObj : PDBParser
+        Parsed PDB object with beta_vals_by_index populated.
+
+    threshold : float
+        pLDDT threshold on 0-1 scale. Residues above this are considered
+        ordered. Default is 0.75.
+
+    hysteresis : float
+        Hysteresis band on 0-1 scale. Once in the ordered state, pLDDT must
+        drop below (threshold - hysteresis) to switch to disordered, and vice
+        versa. Default is 0.05.
+
+    min_region_size : int
+        Minimum number of residues for a region. Regions shorter than this
+        are merged into their largest neighbor, preventing tiny fragments
+        that the builder cannot handle. Default is 10.
+
+    Returns
+    -------
+    PDBParserObj
+        The same object with FD_coords, IDR_coords, and regions_dict populated.
+    '''
+    # convert 0-1 scale to 0-100 (pLDDT scale in PDB B-factor column)
+    center = threshold * 100
+    band = hysteresis * 100
+    high_thresh = center + band
+    low_thresh = center - band
+
+    beta = PDBParserObj.beta_vals_by_index
+    res_indices = sorted(beta.keys())
+    n_res = len(res_indices)
+
+    if n_res == 0:
+        PDBParserObj.IDR_coords['idr_1'] = [0, len(PDBParserObj.sequence) - 1]
+        PDBParserObj.regions_dict['idr_1'] = [0, len(PDBParserObj.sequence) - 1]
+        return PDBParserObj
+
+    # build per-residue pLDDT array
+    plddt = [float(beta[i]) for i in res_indices]
+
+    # state machine: True = ordered, False = disordered
+    ordered = plddt[0] >= center
+    regions = []  # list of (start_index, is_ordered)
+    regions.append((res_indices[0], ordered))
+
+    for i in range(1, n_res):
+        val = plddt[i]
+        if ordered and val < low_thresh:
+            ordered = False
+            regions.append((res_indices[i], False))
+        elif not ordered and val > high_thresh:
+            ordered = True
+            regions.append((res_indices[i], True))
+
+    # convert regions list into coordinate ranges
+    fd_ranges = []
+    idr_ranges = []
+    for idx in range(len(regions)):
+        start = regions[idx][0]
+        is_ordered = regions[idx][1]
+        end = regions[idx + 1][0] - 1 if idx + 1 < len(regions) else res_indices[-1]
+        if is_ordered:
+            fd_ranges.append([start, end])
+        else:
+            idr_ranges.append([start, end])
+
+    # if no FDs found, whole thing is an IDR
+    if not fd_ranges:
+        PDBParserObj.IDR_coords['idr_1'] = [0, len(PDBParserObj.sequence) - 1]
+        PDBParserObj.regions_dict['idr_1'] = [0, len(PDBParserObj.sequence) - 1]
+        return PDBParserObj
+
+    # merge small regions to prevent tiny fragments that break the builder
+    all_ranges = [(r, True) for r in fd_ranges] + [(r, False) for r in idr_ranges]
+    all_ranges.sort(key=lambda x: x[0][0])
+    all_ranges = _merge_small_regions(all_ranges, min_region_size)
+
+    # populate PDBParserObj following the same convention as other methods
+    fin_dict = {}
+    dom_num = 1
+    for coords, is_fd in all_ranges:
+        if is_fd:
+            key = f'folded_{dom_num}'
+            PDBParserObj.FD_coords[key] = coords
+        else:
+            key = f'idr_{dom_num}'
+            PDBParserObj.IDR_coords[key] = coords
+        fin_dict[key] = coords
+        dom_num += 1
+
+    PDBParserObj.regions_dict = fin_dict
+    return PDBParserObj
