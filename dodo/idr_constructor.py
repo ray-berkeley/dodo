@@ -1,7 +1,8 @@
 # imports from 'the web' as the kids say
-import os 
+import os
 import random
 import math
+import time
 import numpy as np
 from copy import deepcopy, copy
 from sparrow import Protein as pr
@@ -1358,18 +1359,26 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
     # dict to hold models:
     models = {}
 
-    # remove the IDRs. This is so we don't need to worry about them 
-    # clashing before we build everything else. 
+    # remove the IDRs. This is so we don't need to worry about them
+    # clashing before we build everything else.
     PDBParserObj=remove_IDRs_loops(PDBParserObj)
     # get all the regions we need to build
     all_regions=PDBParserObj.regions_dict
+
+    if verbose:
+        n_fds = len(PDBParserObj.FD_coords)
+        n_idrs = len(PDBParserObj.IDR_coords)
+        n_loops = len(PDBParserObj.FD_loop_coords)
+        print(f'Region summary: {n_fds} FD(s), {n_idrs} IDR(s), {n_loops} FD(s) with loop(s)')
+
     # if we have FDs or FDs with loops...
     if len(list(PDBParserObj.FD_coords.keys()))+len(list(PDBParserObj.FD_loop_coords.keys()))>1:
         success=False
         cur_attempt=0
         if verbose==True:
-            print('Setting position of folded domains')  
-        # attempt to place the FDs.        
+            print('Setting position of folded domains')
+        t0 = time.time()
+        # attempt to place the FDs.
         while cur_attempt < attempts_per_region:
             cur_attempt+=1
             try:
@@ -1381,6 +1390,8 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
                 pass
         if success==False:
             raise dodoException('Unable to place FDs.')
+        if verbose:
+            print(f'  Placed FDs in {time.time()-t0:.1f}s ({cur_attempt} attempt(s))')
     
     # make a deep copy of the starting PDBParserObj to use to overwrite stuff
     # if we have multiple models. 
@@ -1395,7 +1406,8 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
             success=False
             cur_attempt=0
             if verbose==True:
-                print('Creating disordered loops.')        
+                print('Creating disordered loops.')
+            t0 = time.time()
             while cur_attempt < attempts_per_region:
                 cur_attempt+=1
                 try:
@@ -1405,15 +1417,18 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
                 except dodoException:
                     pass
             if success==False:
-                raise dodoException('Unable to make loops.') 
+                raise dodoException('Unable to make loops.')
+            if verbose:
+                print(f'  Built loops in {time.time()-t0:.1f}s ({cur_attempt} attempt(s))')
 
-        # if we have IDRs... *This doesn't need to worry if they are N or C terminal, 
-        # because the function will figure that out. 
+        # if we have IDRs... *This doesn't need to worry if they are N or C terminal,
+        # because the function will figure that out.
         if PDBParserObj.IDR_coords!={}:
             success=False
             cur_attempt=0
             if verbose==True:
-                print('Connecting FDs with IDRs.')        
+                print('Connecting FDs with IDRs.')
+            t0 = time.time()
             while cur_attempt < attempts_per_region:
                 cur_attempt+=1
                 try:
@@ -1423,14 +1438,17 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
                 except dodoException:
                     pass
             if success==False:
-                raise dodoException('Unable to generate IDRs to connect FDs.')            
-        
+                raise dodoException('Unable to generate IDRs to connect FDs.')
+            if verbose:
+                print(f'  Built connecting IDRs in {time.time()-t0:.1f}s ({cur_attempt} attempt(s))')
+
         # if we have terminal IDRs, add those in.
         if 'idr' in list(all_regions.keys())[0] or 'idr' in list(all_regions.keys())[-1]:
             success=False
             cur_attempt=0
             if verbose==True:
-                print('Adding N and / or C terminal IDRs.')        
+                print('Adding N and / or C terminal IDRs.')
+            t0 = time.time()
             while cur_attempt < attempts_per_region:
                 cur_attempt+=1
                 try:
@@ -1440,7 +1458,9 @@ def build_structure(PDBParserObj, mode='predicted', attempts_per_region=40,
                 except dodoException:
                     pass
             if success==False:
-                raise dodoException('Unable to generate terminal IDRs.')          
+                raise dodoException('Unable to generate terminal IDRs.')
+            if verbose:
+                print(f'  Built terminal IDRs in {time.time()-t0:.1f}s ({cur_attempt} attempt(s))')
         
         # get atom count. This is for CONECT lines later
         tot_atoms=0

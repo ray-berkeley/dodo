@@ -62,6 +62,10 @@ from dodo import build
 ```
 
 You can build new structures from from an existing PDB or just have DODO download the structure from the AF2 database. You can also generate PDBs of IDRs from sequence alone!  
+
+### Optional all-atom rebuilding with PULCHRA
+
+[PULCHRA](https://github.com/euplotes/pulchra) is a program for reconstructing all-atom models of proteins from Cα representations. DODO can optionally run the external ``pulchra`` executable after building a CA trace for disordered regions with the ``--use_pulchra`` argument. For structures with folded domains, DODO writes a temporary full-length CA-only PDB, runs ``pulchra input.pdb``, and copies PULCHRA atoms back only onto residues that were CA-only in the generated (AlphaFold/Boltz/etc) model. Existing all-atom folded-domain coordinates are therefore preserved. If ``pulchra`` is not on your ``PATH``, pass ``--pulchra_executable /path/to/pulchra``. PULCHRA rebuilding currently supports one model at a time and is not supported with ``graph=True``, ``just_fds=True``, or ``include_FD_atoms=False``.
   
 ### Generating a structure from the name alone
 
@@ -100,6 +104,10 @@ All arguments for ``build.pdb_from_name()`` are as follows:
 **attempts_per_region** - optional. Default: 20. Number of times to try and make each region.  
 
 **attempts_per_coord** - optional. Default: 2000. Number of times to try to generate each coordinate for each alpha carbon in the structure.  
+
+**use_pulchra** - optional. Default: False. Whether to run PULCHRA on a temporary CA-only trace and rebuild atoms only for CA-only residues.
+
+**pulchra_executable** - optional. Default: 'pulchra'. Executable name or full path for PULCHRA.
   
 
 ### Modifying the IDR from an existing PDB file
@@ -139,6 +147,10 @@ All arguments for ``build.pdb_from_pdb()`` are as follows:
 **attempts_per_region** - optional. Default: 20. Number of times to try and make each region.  
   
 **attempts_per_coord** - optional. Default: 2000. Number of times to try to generate each coordinate for each alpha carbon in the structure.  
+
+**use_pulchra** - optional. Default: False. Whether to run PULCHRA on a temporary CA-only trace and rebuild atoms only for CA-only residues.
+
+**pulchra_executable** - optional. Default: 'pulchra'. Executable name or full path for PULCHRA.
 
 
 ### Making a PDB for an IDR just from sequence.
@@ -209,6 +221,10 @@ All arguments for ``pdb-from-name`` are as follows:
 ``-apr`` or ``--attempts_per_region`` : optional. Default: 40. ``--attempts_per_region`` lets you specify the number of attempts to make each region of the structure.  
   
 ``-apc`` or ``--attempts_per_coord`` : optional. Default: 2000. ``--attempts_per_coord`` lets you specify the number of attempts to make to generate each coordinate in your structure.  
+
+``--use_pulchra`` : optional. Default: False. Runs PULCHRA on a temporary CA-only trace and rebuilds atoms only for CA-only residues.
+
+``--pulchra_executable`` : optional. Default: ``pulchra``. Executable name or full path for PULCHRA.
   
   
 ### Modifying the IDR from an existing AF2 PDB file from the command-line
@@ -244,6 +260,10 @@ All arguments for ``pdb-from-pdb`` are as follows:
 ``-apr`` or ``--attempts_per_region`` : optional. Default: 40. ``--attempts_per_region`` lets you specify the number of attempts to make each region of the structure.  
   
 ``-apc`` or ``--attempts_per_coord`` : optional. Default: 2000. ``--attempts_per_coord`` lets you specify the number of attempts to make to generate each coordinate in your structure.
+
+``--use_pulchra`` : optional. Default: False. Runs PULCHRA on a temporary CA-only trace and rebuilds atoms only for CA-only residues.
+
+``--pulchra_executable`` : optional. Default: ``pulchra``. Executable name or full path for PULCHRA.
    
 
 ### Making a PDB for an IDR just from sequence from the command-line.
@@ -267,6 +287,10 @@ All arguments for ``pdb-from-pdb`` are as follows:
 ``-api`` or ``--attempts_per_IDR`` : optional. Default: 50. ``--attempts_per_IDR`` lets you specify the number of attempts to make to the IDR.  
 
 ``-apr`` or ``--attempts_per_residue`` : optional. Default: 1000. ``--attempts_per_residue`` lets you specify the number of attempts to make the coordinates for each residue for your IDR.   
+
+``--use_pulchra`` : optional. Default: False. Runs PULCHRA on a temporary CA-only trace and saves the rebuilt all-atom output.
+
+``--pulchra_executable`` : optional. Default: ``pulchra``. Executable name or full path for PULCHRA.
    
   
 #### Changes
