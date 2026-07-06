@@ -59,6 +59,12 @@ def test_pulchra_wrapper_uses_rebuilt_output(tmp_path):
 
     rebuild_PDBParserObj_with_pulchra(pdb_obj, out_path, executable=fake_pulchra)
     rebuilt = PDBParser(out_path.read_text().splitlines())
+    ca_elements = [
+        line[76:78].strip()
+        for line in out_path.read_text().splitlines()
+        if line.startswith("ATOM  ") and line[12:16].strip() == "CA"
+    ]
 
     assert rebuilt.all_atom_coords_by_index[-1]["N"] == (1.0, 1.0, 1.0)
     assert rebuilt.all_atom_coords_by_index[0]["N"] == (5.0, 5.0, 5.0)
+    assert ca_elements == ["C", "C"]

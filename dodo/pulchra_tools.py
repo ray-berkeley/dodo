@@ -28,6 +28,31 @@ def _rebuilt_path(input_pdb):
     return input_pdb.with_name(f'{input_pdb.stem}.rebuilt.pdb')
 
 
+def _protein_atom_element(atom_name):
+    atom_name = atom_name.strip()
+    if atom_name == '':
+        return '  '
+    if atom_name[0].isdigit():
+        atom_name = atom_name[1:]
+    return atom_name[0].upper().rjust(2)
+
+
+def _normalize_protein_atom_elements(pdb_path):
+    pdb_path = Path(pdb_path)
+    fixed_lines = []
+    for line in pdb_path.read_text().splitlines(keepends=True):
+        if not line.startswith('ATOM  '):
+            fixed_lines.append(line)
+            continue
+
+        newline = '\n' if line.endswith('\n') else ''
+        atom_line = line.rstrip('\n').ljust(78)
+        element = _protein_atom_element(atom_line[12:16])
+        fixed_lines.append(f'{atom_line[:76]}{element}{atom_line[78:]}{newline}')
+
+    pdb_path.write_text(''.join(fixed_lines))
+
+
 def _format_ca_line(atom_index, residue_name, residue_index, xyz, beta):
     x, y, z = xyz
     return (
@@ -74,6 +99,7 @@ def run_pulchra(input_pdb, out_path=None, executable='pulchra', verbose=False):
 
     if out_path is not None:
         Path(out_path).write_text(rebuilt_path.read_text())
+        _normalize_protein_atom_elements(out_path)
 
     return rebuilt_path
 
@@ -146,6 +172,7 @@ def rebuild_PDBParserObj_with_pulchra(PDBParserObj, out_path, executable='pulchr
         model_num=1,
         last_model=True,
     )
+    _normalize_protein_atom_elements(out_path)
 
 
 def rebuild_sequence_dict_with_pulchra(sequence_dict, out_path, executable='pulchra', verbose=False):
