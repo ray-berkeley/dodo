@@ -28,6 +28,10 @@ def pdb_from_pdb():
         help='Use B-factor (pLDDT) as disorder proxy. Optionally specify threshold on 0-1 scale (default: 0.75).')
     parser.add_argument('--hysteresis', type=float, default=0.05,
         help='Hysteresis value (0-1 scale) to prevent short disordered dips from fragmenting ordered regions (default: 0.05).')
+    parser.add_argument('--use_pulchra', action='store_true', default=False,
+        help='Run PULCHRA on the generated CA trace to rebuild backbone and side-chain atoms.')
+    parser.add_argument('--pulchra_executable', default='pulchra',
+        help='PULCHRA executable name or full path (default: pulchra).')
 
     # parser args
     args = parser.parse_args()
@@ -44,5 +48,5 @@ def pdb_from_pdb():
         verbose=verbose, attempts_per_region=args.attempts_per_region,
         attempts_per_coord=args.attempts_per_coord, num_models=args.num_models,
         beta_for_FD_IDR=args.beta_for_FD_IDR, just_fds=args.just_fds,
-        bfactor_threshold=args.use_bfactor_proxy, bfactor_hysteresis=args.hysteresis)
-
+        bfactor_threshold=args.use_bfactor_proxy, bfactor_hysteresis=args.hysteresis,
+        use_pulchra=args.use_pulchra, pulchra_executable=args.pulchra_executable)

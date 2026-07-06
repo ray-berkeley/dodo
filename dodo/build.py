@@ -8,15 +8,30 @@ from dodo.idr_constructor import build_structure, build_idr_from_sequence
 from dodo.find_idrs_fds_loops import get_fds_loops_idrs, get_fds_idrs_from_metapredict, get_fds_idrs_from_bfactor
 from dodo.dodo_tools import plot_structure
 from dodo.pdb_tools import PDBParser, write_pdb, array, save_pdb_from_PDBParserObj
+from dodo.pulchra_tools import rebuild_PDBParserObj_with_pulchra, rebuild_sequence_dict_with_pulchra
 from dodo import parameters
 
+
+def _validate_pulchra_options(use_pulchra, graph, num_models, just_fds=False,
+    include_FD_atoms=True):
+    if not use_pulchra:
+        return
+    if graph:
+        raise dodoException('PULCHRA rebuilding requires a saved PDB; graph=True is not supported.')
+    if num_models != 1:
+        raise dodoException('PULCHRA rebuilding currently supports one model at a time.')
+    if just_fds:
+        raise dodoException('PULCHRA rebuilding is not supported with just_fds=True.')
+    if not include_FD_atoms:
+        raise dodoException('PULCHRA rebuilding requires include_FD_atoms=True.')
 
 
 def pdb_from_name(protein_name, out_path='', mode='predicted',
     linear_placement=False, CONECT_lines=True, include_FD_atoms=True,
     use_metapredict=False, graph=False, verbose=True, attempts_per_region=40,
     attempts_per_coord=2000, num_models=1, beta_for_FD_IDR=False, just_fds=False,
-    bfactor_threshold=None, bfactor_hysteresis=0.05):
+    bfactor_threshold=None, bfactor_hysteresis=0.05, use_pulchra=False,
+    pulchra_executable='pulchra'):
     """
     Function to take in the name of a protein and then return an AF2 PDB
     with modified disordered regions. 
@@ -78,6 +93,9 @@ def pdb_from_name(protein_name, out_path='', mode='predicted',
     # make sure mode is reasonable before getting rolling.
     if mode not in list(parameters.modes.keys()):
         raise dodoException('Invalid mode specified. Please specify super_compact, compact, normal, expanded, super_expanded, or max_expansion, or predicted.')
+
+    _validate_pulchra_options(use_pulchra, graph, num_models, just_fds=just_fds,
+        include_FD_atoms=include_FD_atoms)
     
     # make a dict with info we need for everything.
     PDBParserObj=get_af2_pdb_lines(protein_name, verbose=verbose)
@@ -122,7 +140,8 @@ def pdb_from_name(protein_name, out_path='', mode='predicted',
     if len(PDBParserObj.regions_dict)==1 and 'idr_1' in PDBParserObj.regions_dict:
         return pdb_from_sequence(PDBParserObj.sequence, out_path=out_path, mode=mode, 
             attempts_per_res=1000, attempts_per_idr=50, end_coord=(0,0,0), 
-                CONECT_lines=CONECT_lines, graph=graph, num_models=num_models)
+                CONECT_lines=CONECT_lines, graph=graph, num_models=num_models,
+                use_pulchra=use_pulchra, pulchra_executable=pulchra_executable)
 
 
     # build new structure  
@@ -156,6 +175,9 @@ def pdb_from_name(protein_name, out_path='', mode='predicted',
         # otherwise save that stuffs.
         if out_path=='':
             raise dodoException('Please specify an output path.')
+        elif use_pulchra:
+            rebuild_PDBParserObj_with_pulchra(PDBParserObj[1], out_path,
+                executable=pulchra_executable, verbose=verbose, CONECT_lines=CONECT_lines)
         else:
             for model_number in PDBParserObj:
                 if model_number==1:
@@ -177,7 +199,8 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
     use_metapredict=False, graph=False, verbose=True, attempts_per_region=40,
     attempts_per_coord=2000, regions_dict=None, num_models=1,
     beta_for_FD_IDR=False, just_fds=False,
-    bfactor_threshold=None, bfactor_hysteresis=0.05):
+    bfactor_threshold=None, bfactor_hysteresis=0.05, use_pulchra=False,
+    pulchra_executable='pulchra'):
     """
     Function to take in the path to an AF2 pdb structure and return the structure
     with modified disordered regions. 
@@ -238,6 +261,9 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
     # make sure mode is reasonable before getting rolling.
     if mode not in list(parameters.modes.keys()):
         raise dodoException('Invalid mode specified. Please specify super_compact, compact, normal, expanded, super_expanded, or max_expansion, or predicted.')    
+
+    _validate_pulchra_options(use_pulchra, graph, num_models, just_fds=just_fds,
+        include_FD_atoms=include_FD_atoms)
     
     # make sure we have a PDB to open.
     if os.path.isfile(path_to_pdb)==False:
@@ -297,7 +323,8 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
     if len(PDBParserObj.regions_dict)==1 and 'idr_1' in PDBParserObj.regions_dict:
         return pdb_from_sequence(PDBParserObj.sequence, out_path=out_path, mode=mode, 
             attempts_per_res=1000, attempts_per_idr=50, end_coord=(0,0,0), 
-                CONECT_lines=CONECT_lines, graph=graph, num_models=num_models)
+                CONECT_lines=CONECT_lines, graph=graph, num_models=num_models,
+                use_pulchra=use_pulchra, pulchra_executable=pulchra_executable)
 
 
     # build the structure.
@@ -329,6 +356,9 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
     else:
         if out_path=='':
             raise dodoException('Please specify an output path.')
+        elif use_pulchra:
+            rebuild_PDBParserObj_with_pulchra(PDBParserObj[1], out_path,
+                executable=pulchra_executable, verbose=verbose, CONECT_lines=CONECT_lines)
         else:
             for model_number in PDBParserObj:
                 if model_number==1:
@@ -348,7 +378,8 @@ def pdb_from_pdb(path_to_pdb, out_path='', mode='predicted',
 
 def pdb_from_sequence(sequence, out_path='', mode='predicted', 
     attempts_per_res=1000, attempts_per_idr=50, end_coord=(0,0,0), 
-    CONECT_lines=True, graph=False, num_models=1):
+    CONECT_lines=True, graph=False, num_models=1, use_pulchra=False,
+    pulchra_executable='pulchra'):
     '''
     Function to generate a PDB (or graph the IDR) using a sequence as the input.
 
@@ -394,6 +425,8 @@ def pdb_from_sequence(sequence, out_path='', mode='predicted',
     if mode not in list(parameters.modes.keys()):
         raise dodoException('Invalid mode specified. Please specify super_compact, compact, normal, expanded, super_expanded, or max_expansion, or predicted.')        
 
+    _validate_pulchra_options(use_pulchra, graph, num_models)
+
     # make dict to hold models
     models={}
 
@@ -411,23 +444,24 @@ def pdb_from_sequence(sequence, out_path='', mode='predicted',
     if graph==False:
         if out_path=='':
             raise dodoException('Please specify an output path.')
-        for model_number in models:
-            if model_number==1:
-                add_mode='w'
-            else:
-                add_mode='a'
-            if model_number==num_models:
-                last_model=True
-            else:
-                last_model=False     
-            idr_dict=models[model_number]
-            write_pdb(idr_dict['xyz_list'], out_path, atom_indices=idr_dict['atom_indices'],
-                atom_names=idr_dict['atom_names'], residue_indices=idr_dict['residue_indices'],
-                residue_names=idr_dict['residue_names'], CONECT_LINES=CONECT_coords,
-                add_mode=add_mode, last_model=last_model, model_num=model_number)
+        if use_pulchra:
+            rebuild_sequence_dict_with_pulchra(models[1], out_path,
+                executable=pulchra_executable, verbose=False)
+        else:
+            for model_number in models:
+                if model_number==1:
+                    add_mode='w'
+                else:
+                    add_mode='a'
+                if model_number==num_models:
+                    last_model=True
+                else:
+                    last_model=False
+                idr_dict=models[model_number]
+                write_pdb(idr_dict['xyz_list'], out_path, atom_indices=idr_dict['atom_indices'],
+                    atom_names=idr_dict['atom_names'], residue_indices=idr_dict['residue_indices'],
+                    residue_names=idr_dict['residue_names'], CONECT_LINES=CONECT_coords,
+                    add_mode=add_mode, last_model=last_model, model_num=model_number)
     else:
         plot_structure(models[1]['xyz_list'], {'idr': [0, len(sequence)]})
-
-
-
 
