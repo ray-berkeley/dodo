@@ -111,19 +111,33 @@ def _ca_only_residue_indices(PDBParserObj):
     ]
 
 
-def _merge_rebuilt_ca_only_residues(PDBParserObj, rebuilt_PDBParserObj, residue_indices):
+def _merge_rebuilt_ca_only_residues(
+    PDBParserObj,
+    rebuilt_PDBParserObj,
+    residue_indices,
+    rebuilt_index_to_original_index,
+):
+    original_index_to_rebuilt_index = {
+        original_index: rebuilt_index
+        for rebuilt_index, original_index in rebuilt_index_to_original_index.items()
+    }
+
     for aa in residue_indices:
-        if aa not in rebuilt_PDBParserObj.all_atom_coords_by_index:
-            raise dodoException(f'PULCHRA output is missing residue index {aa}.')
-        if PDBParserObj.index_to_3aa[aa] != rebuilt_PDBParserObj.index_to_3aa[aa]:
+        if aa not in original_index_to_rebuilt_index:
+            raise dodoException(f'PULCHRA trace is missing residue index {aa}.')
+
+        rebuilt_aa = original_index_to_rebuilt_index[aa]
+        if rebuilt_aa not in rebuilt_PDBParserObj.all_atom_coords_by_index:
+            raise dodoException(f'PULCHRA output is missing residue index {rebuilt_aa}.')
+        if PDBParserObj.index_to_3aa[aa] != rebuilt_PDBParserObj.index_to_3aa[rebuilt_aa]:
             raise dodoException(
                 f'Residue mismatch after PULCHRA at index {aa}: '
-                f'{PDBParserObj.index_to_3aa[aa]} != {rebuilt_PDBParserObj.index_to_3aa[aa]}'
+                f'{PDBParserObj.index_to_3aa[aa]} != {rebuilt_PDBParserObj.index_to_3aa[rebuilt_aa]}'
             )
 
-        PDBParserObj.all_atom_coords_by_index[aa] = rebuilt_PDBParserObj.all_atom_coords_by_index[aa]
-        PDBParserObj.all_atom_coords_by_index_with_aa[aa] = rebuilt_PDBParserObj.all_atom_coords_by_index_with_aa[aa]
-        PDBParserObj.sequence_3aa_by_index[aa] = rebuilt_PDBParserObj.sequence_3aa_by_index[aa]
+        PDBParserObj.all_atom_coords_by_index[aa] = rebuilt_PDBParserObj.all_atom_coords_by_index[rebuilt_aa]
+        PDBParserObj.all_atom_coords_by_index_with_aa[aa] = rebuilt_PDBParserObj.all_atom_coords_by_index_with_aa[rebuilt_aa]
+        PDBParserObj.sequence_3aa_by_index[aa] = rebuilt_PDBParserObj.sequence_3aa_by_index[rebuilt_aa]
 
     PDBParserObj.number_atoms = sum(len(atoms) for atoms in PDBParserObj.all_atom_coords_by_index.values())
     return PDBParserObj
@@ -144,6 +158,7 @@ def write_ca_trace_from_PDBParserObj(PDBParserObj, out_path):
         })
 
     _write_ca_trace(ca_records, out_path)
+    return {trace_index: residue_index for trace_index, residue_index in enumerate(residue_indices)}
 
 
 def rebuild_PDBParserObj_with_pulchra(PDBParserObj, out_path, executable='pulchra',
@@ -154,7 +169,7 @@ def rebuild_PDBParserObj_with_pulchra(PDBParserObj, out_path, executable='pulchr
 
     with tempfile.TemporaryDirectory(prefix='dodo_pulchra_') as temp_dir:
         ca_trace_path = Path(temp_dir) / 'dodo_ca_trace.pdb'
-        write_ca_trace_from_PDBParserObj(PDBParserObj, ca_trace_path)
+        rebuilt_index_to_original_index = write_ca_trace_from_PDBParserObj(PDBParserObj, ca_trace_path)
         rebuilt_path = run_pulchra(ca_trace_path, executable=executable, verbose=verbose)
         rebuilt_PDBParserObj = PDBParser(rebuilt_path.read_text().splitlines())
 
@@ -162,6 +177,7 @@ def rebuild_PDBParserObj_with_pulchra(PDBParserObj, out_path, executable='pulchr
         PDBParserObj,
         rebuilt_PDBParserObj,
         ca_only_residue_indices,
+        rebuilt_index_to_original_index,
     )
     save_pdb_from_PDBParserObj(
         PDBParserObj,
